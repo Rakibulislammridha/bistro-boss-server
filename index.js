@@ -143,7 +143,20 @@ async function run() {
       res.send(result);
     });
 
-    // rating related api
+    app.post("/menu", verifyJWT, verifyAdmin, async(req, res)=>{
+      const newItem = req.body;
+      const result = await menuCollection.insertOne(newItem);
+      res.send(result);
+    })
+
+    app.delete("/menu/:id", verifyJWT, verifyAdmin, async(req, res)=> {
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)}
+      const result = await menuCollection.deleteOne(query);
+      res.send(result);
+    })
+
+    // review related api
     app.get("/reviews", async (req, res) => {
       const result = await reviewsCollection.find().toArray();
       res.send(result);
