@@ -227,7 +227,7 @@ async function run() {
       res.send({ insertResult, deleteResult });
     });
 
-    app.get("/admin-stats", async (req, res) => {
+    app.get("/admin-stats", verifyJWT, verifyAdmin, async (req, res) => {
       const users = await usersCollection.estimatedDocumentCount();
       const products = await menuCollection.estimatedDocumentCount();
       const orders = await paymentCollection.estimatedDocumentCount();
@@ -256,6 +256,67 @@ async function run() {
         orders,
       });
     });
+
+    /**
+     * 
+     * -----------------------
+     * Second best solution
+     * -----------------------
+     * 1. load all payments
+     * 2. for each payment get menu 
+     * 3. for each in the menuItem array get the menu item from the menu collection
+     * 4. put them in an array: allOrderedItems
+     * 5. separate allOrderedItems by category using filter
+     * 6. now get the quantity by using length: pizzas.length
+     * 7. for each category use reduce to get the total amount spend on the category
+     * 
+     */
+
+    /**
+     * 
+     * -------------------------
+     * aggregate : ask chatGpt 
+     * -------------------------
+     * (Data formate)
+     * Question: i have a mongodb account called payment it has a field menuItemsCollection containing of the menu items selected during an order. Now i need connect the menu items id with the menu collection where every menu items has a category and price
+     * -----------
+     * (What to do)
+     * number of menu items on each category. Also i need the price of each category that is in the menuItem of the payment collection 
+     * --------------
+     * i am using express mongoDb but no mongoes give me the api route (use async await)
+     */
+    app.get("/order-state", verifyJWT, verifyAdmin, async (req, res)=>{
+      const pipeline = [
+        {
+          $lookup: {
+            from: "menu",
+            localField: "menuItems",
+            foreignField: "_id",
+            as: "menuItemsData"
+          }
+        },
+        {
+          $unwind: "$menuItemsData",
+        },
+        {
+          $group: {
+            _id: "$menuItemsData.category",
+            count: {$sum: 1},
+            total: {$sum: "$menuItemsData.price"}
+          }
+        },
+        {
+          $project: {
+            category: "$_id",
+            count: 1,
+            total: {$round: ["$total", 2]},
+            _id: 0
+          }
+        },
+      ];
+      const result = await paymentCollection.aggregate(pipeline).toArray()
+      res.send(result)
+    })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
