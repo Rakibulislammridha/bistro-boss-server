@@ -69,22 +69,24 @@ async function run() {
 
     // warning : use verifyJET before using verifyAdmin
 
-    const verifyAdmin = async (req, res, next)=>{
+    const verifyAdmin = async (req, res, next) => {
       const email = req.decoded.email;
-      const query = {email: email};
+      const query = { email: email };
       const user = await usersCollection.findOne(query);
-      if(user?.role !== "admin"){
-        return res.status(403).send({error: true , message: "forbidden message"})
+      if (user?.role !== "admin") {
+        return res
+          .status(403)
+          .send({ error: true, message: "forbidden message" });
       }
       next();
-    }
+    };
 
     /**
-     * 
+     *
      * 0. don't show secure links to those who should not see the links
      * 1. use jwt token: verifyJWT
      * 2. use verify admin
-     * 
+     *
      */
 
     // Users related api
@@ -107,18 +109,18 @@ async function run() {
     // security layer: verifyJWT
     // email same
     // check admin
-    app.get("/users/admin/:email", verifyJWT, async(req, res)=> {
+    app.get("/users/admin/:email", verifyJWT, async (req, res) => {
       const email = req.params.email;
 
-      if(req.decoded.email !== email){
-        res.send({admin: false})
+      if (req.decoded.email !== email) {
+        res.send({ admin: false });
       }
 
-      const query = {email: email}
+      const query = { email: email };
       const user = await usersCollection.findOne(query);
-      const result = {admin: user?.role === "admin"}
+      const result = { admin: user?.role === "admin" };
       res.send(result);
-    })
+    });
 
     app.patch("/users/admin/:id", async (req, res) => {
       const id = req.params.id;
@@ -146,18 +148,18 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/menu", verifyJWT, verifyAdmin, async(req, res)=>{
+    app.post("/menu", verifyJWT, verifyAdmin, async (req, res) => {
       const newItem = req.body;
       const result = await menuCollection.insertOne(newItem);
       res.send(result);
-    })
+    });
 
-    app.delete("/menu/:id", verifyJWT, verifyAdmin, async(req, res)=> {
+    app.delete("/menu/:id", verifyJWT, verifyAdmin, async (req, res) => {
       const id = req.params.id;
-      const query = {_id: new ObjectId(id)}
+      const query = { _id: new ObjectId(id) };
       const result = await menuCollection.deleteOne(query);
       res.send(result);
-    })
+    });
 
     // review related api
     app.get("/reviews", async (req, res) => {
@@ -175,7 +177,9 @@ async function run() {
 
       const decodedEmail = req.decoded.email;
       if (email !== decodedEmail) {
-        return res.status(403).send({ error: true, message: "Forbidden Access" });
+        return res
+          .status(403)
+          .send({ error: true, message: "Forbidden Access" });
       }
 
       const query = { email: email };
@@ -197,29 +201,61 @@ async function run() {
     });
 
     // create payment intent
-    app.post("/create-payment-intent", verifyJWT, async(req, res)=>{
-      const {price} = req.body;
-      const amount = parseFloat((price*100).toFixed(2));
+    app.post("/create-payment-intent", verifyJWT, async (req, res) => {
+      const { price } = req.body;
+      const amount = parseFloat((price * 100).toFixed(2));
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
         currency: "usd",
-        payment_method_types: ["card"]
-      })
+        payment_method_types: ["card"],
+      });
       res.send({
-        clientSecret: paymentIntent.client_secret
-      })
-    })
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
 
     //  payment related api
-    app.post("/payments", verifyJWT, async(req, res)=>{
+    app.post("/payments", verifyJWT, async (req, res) => {
       const payment = req.body;
-      const insertResult = await paymentCollection.insertOne(payment)
+      const insertResult = await paymentCollection.insertOne(payment);
 
-      const query = {_id: {$in: payment.cartItems.map(id => new ObjectId(id))}}
+      const query = {
+        _id: { $in: payment.cartItems.map((id) => new ObjectId(id)) },
+      };
       const deleteResult = await cartCollection.deleteMany(query);
 
-      res.send({insertResult, deleteResult});
-    })
+      res.send({ insertResult, deleteResult });
+    });
+
+    app.get("/admin-stats", async (req, res) => {
+      const users = await usersCollection.estimatedDocumentCount();
+      const products = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
+
+      // best way to get sum of the price field to use group and sum operator
+
+      /**
+       * await paymentCollection.aggregate([
+       * {
+       *    $group: {
+       *          _id: null,
+       *           total: {$sum: "$price"}
+       * }
+       * }
+       * ]).toArray()
+       *
+       */
+
+      const payments = await paymentCollection.find().toArray();
+      const revenue = payments.reduce((sum, payment)=> sum + payment.price, 0)
+
+      res.send({
+        revenue,
+        users,
+        products,
+        orders,
+      });
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
